@@ -71,7 +71,7 @@ function remove_band (img) {
 
 // Define years
 var start_year = 2009;
-var end_year = 2019;
+var end_year = 2018;
 
 // Empty raster for mean frozen winter precipitation
 var era5_froz_prec_mean_all = ee.Image(0).clip(study_area);
