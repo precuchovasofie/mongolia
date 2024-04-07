@@ -262,6 +262,10 @@ var dzud_accuracy_16_17 = dzud.select('2016').gte(n);
 Map.addLayer(dzud_accuracy_09_10, {'palette': ['blue', 'red'], min: 0, max: 1},'Dzud index binary 2009–10');
 Map.addLayer(dzud_accuracy_16_17, {'palette': ['blue', 'red'], min: 0, max: 1},'Dzud index binary 2016–17');
 
+// Export map of binary maps
+Export.image.toDrive({image: dzud_accuracy_09_10, description: 'dzud_binary_09_16', scale: 500, crs: 'EPSG:32650', region: study_area, fileFormat: 'GeoTIFF', maxPixels: 3784216672400});
+Export.image.toDrive({image: dzud_accuracy_16_17, description: 'dzud_binary_16_17', scale: 500, crs: 'EPSG:32650', region: study_area, fileFormat: 'GeoTIFF', maxPixels: 3784216672400});
+
 // Extracting values
 var sampled_points_09_10 = dzud_accuracy_09_10.sampleRegions({
   collection: random_points_09_10,
