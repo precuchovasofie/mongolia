@@ -2,23 +2,36 @@
 Citations:
 Abatzoglou, J.T., S.Z. Dobrowski, S.A. Parks, K.C. Hegewisch (2018). Terraclimate, a high-resolution global dataset of monthly climate and climatic water balance from 1958-2015, Scientific Data 5:170191, doi:10.1038/sdata.2017.191
 Farr, T.G., Rosen, P.A., Caro, E., Crippen, R., Duren, R., Hensley, S., Kobrick, M., Paller, M., Rodriguez, E., Roth, L., Seal, D., Shaffer, S., Shimada, J., Umland, J., Werner, M., Oskin, M., Burbank, D., and Alsdorf, D.E. (2007). The shuttle radar topography mission: Reviews of Geophysics, v. 45, no. 2, RG2004, at https://doi.org/10.1029/2005RG000183.
-Funk, Ch., Peterson, P., Landsfeld, M., Pedreros, D., Verdin, J., Shukla, S., Husak, G., Rowland, J., Harrison, L., Hoell, A., Michaelsen, J. (2015). The climate hazards infrared precipitation with stations-a new environmental record for monitoring extremes. Scientific Data 2, 150066. doi:10.1038/sdata.2015.66.
 Jarvis, A., H.I. Reuter, A. Nelson, E. Guevara (2008). Hole-filled SRTM for the globe Version 4, available from the CGIAR-CSI SRTM 90m Database: https://srtm.csi.cgiar.org.
-MOD09A1.006 Terra Surface Reflectance 8-Day Global 500m [deprecated].
-Muñoz Sabater, J., (2019). ERA5-Land monthly averaged data from 1981 to present. Copernicus Climate Change Service (C3S) Climate Data Store (CDS). (<date of access>), doi:10.24381/cds.68d2bb30
+MOD09GA.061 Terra Surface Reflectance Daily Global 1km and 500m [24-4-2024].
+Muñoz Sabater, J. (2019). ERA5-Land monthly averaged data from 1981 to present. Copernicus Climate Change Service (C3S) Climate Data Store (CDS). (<date of access>), doi:10.24381/cds.68d2bb30
 
-Script created by Sofie Hlínová, Jan Svoboda and Josef Laštovička.
+Script created by Sofie Hlínová, Josef Laštovička and Jan Svoboda.
 */
 
+// MAP OPTIONS
 // Set center of the map
-Map.setCenter(105.0, 47.0, 5);
+Map.setCenter(105.0, 47.0, 4);
 
+// DATA UPLOAD
 // Mongolia boundary
 var study_area = ee.FeatureCollection('projects/precuchovasofie/assets/mongolia/mongolia');
 
 // Area for chart
-var area_1 = ee.Geometry.Point([102.8062464, 47.5345982]).buffer(10000); //dzud area
-var area_2 = ee.Geometry.Point([111.1356300, 44.8545459]).buffer(10000); //non-dzud area
+var area_1 = ee.Geometry.Point([109.2117967, 47.5142068]).buffer(10000); //dzud area
+var area_2 = ee.Geometry.Point([110.3736606, 45.6348238]).buffer(10000); //non-dzud area
+
+// MAPS
+// Function for masking shadow, cloud and cirrus mask in MODIS data
+function modis_mask (image) {
+  var qa = image.select('state_1km');
+  var cloud = qa.bitwiseAnd(1 << 0).or(qa.bitwiseAnd(1 << 1));
+  var shadow = qa.bitwiseAnd(1 << 2);
+  var cloud_2 = qa.bitwiseAnd(1 << 10);
+  var cirrus =  qa.bitwiseAnd(1 << 8).or(qa.bitwiseAnd(1 << 9));
+  var mask = cloud.or(shadow).or(cloud_2).or(cirrus);
+  return image.updateMask(mask.not());
+}
 
 // Calculation of indices NDMI, NDSI and NDVI
 function indices_cal (img) {
@@ -41,24 +54,18 @@ function rela_froz_prec_cal (img){
   return img.addBands(rela_froz_prec);
 }
 
-// Calculation of relative precipitation
-function rela_prec_cal (img){
-  var rela_prec = img.divide(chirps_prec_mean_all).subtract(1).rename('rela_prec');
-  return img.addBands(rela_prec);
-}
-
 // Dzud function
 function dzud_cal (img) {
-    var dzud_ndmi = img.select('ndmi').lt(0.2).eq(1).multiply(0.5);
-    var dzud_ndsi = img.select('ndsi').gt(0.2).eq(1).multiply(1.25);
+    var dzud_ndmi = img.select('ndmi').lt(0.1).eq(1).multiply(0.5);
+    var dzud_ndsi = img.select('ndsi').gt(0.3).eq(1).multiply(1.25);
     var dzud_ndvi = img.select('ndvi').lt(0.3).eq(1).multiply(0.25);
     var dzud_pdsi = img.select('pdsi').lt(-250).eq(1).multiply(1.25);
     var dzud_relative_frozen_precipitation = img.select('rela_froz_prec').gt(0.35).eq(1).multiply(1.75);
-    var dzud_relative_precipitation = img.select('rela_prec').lt(-0.45).eq(1).multiply(1.25);
+    var dzud_precipitation = img.select('total_precipitation').lt(0.2).eq(1).multiply(1.25);
     var dzud_elevation = img.select('elevation').gt(2000).eq(1).multiply(0.25);
     var dzud_slope = img.select('slope').gt(30).eq(1).multiply(0.25);
     var dzud_aspect = img.select('aspect').gte(315).or(img.select('aspect').lte(45)).eq(1).multiply(0.25);
-    var dzud = dzud_ndmi.add(dzud_ndsi).add(dzud_ndvi).add(dzud_pdsi).add(dzud_relative_frozen_precipitation).add(dzud_relative_precipitation).add(dzud_elevation).add(dzud_slope).add(dzud_aspect).rename('dzud');
+    var dzud = dzud_ndmi.add(dzud_ndsi).add(dzud_ndvi).add(dzud_pdsi).add(dzud_relative_frozen_precipitation).add(dzud_precipitation).add(dzud_elevation).add(dzud_slope).add(dzud_aspect).rename('dzud');
     return img.addBands(dzud);
 }
 
@@ -71,7 +78,7 @@ function remove_band (img) {
 
 // Define years
 var start_year = 2009;
-var end_year = 2018;
+var end_year = 2019;
 
 // Empty raster for mean frozen winter precipitation
 var era5_froz_prec_mean_all = ee.Image(0).clip(study_area);
@@ -91,16 +98,6 @@ for (var i = start_year; i <= end_year; i++) {
 // Empty raster for mean summer precipitation
 var chirps_prec_mean_all = ee.Image(0).clip(study_area);
 
-// Longterm summer precipitation
-for (var i = start_year; i <= end_year; i++) {
-  var summer_start = ee.Date.fromYMD(i, 6, 1);
-  var chirps_prec_one = ee.ImageCollection('UCSB-CHG/CHIRPS/DAILY')
-    .filterDate(summer_start, summer_start.advance(3, 'month'))
-    .select('precipitation')
-    .sum();
-  chirps_prec_mean_all = chirps_prec_mean_all.add(chirps_prec_one.divide(end_year-start_year+1));
-}
-
 // Select SRTM data and create slope and aspect
 var srtm = ee.Image('USGS/SRTMGL1_003').clip(study_area);
 var srtm_slope = ee.Terrain.slope(srtm);
@@ -112,69 +109,66 @@ var dzud_mean = ee.Image(0).clip(study_area);
 // Empty raster for anual dzud values
 var dzud = ee.Image(0).clip(study_area);
 
-var dzud_parameters = {
-  min: 0,
-  max: 6,
-  palette: ['white', 'green', 'blue', 'yellow', 'orange', 'pink', 'red'],
-};
-
 // Dzud index calculation
 for (var i = start_year; i <= end_year; i++) {
-  
+ 
   // Winter frozen precipitation
-  var autumn_start = ee.Date.fromYMD(i, 10, 31);
+  var autumn_start = ee.Date.fromYMD(i, 9, 1);
   var era5_froz_prec = ee.ImageCollection('ECMWF/ERA5/DAILY')
-    .filterDate(autumn_start, autumn_start.advance(4, 'month'))
+    .filterDate(autumn_start, autumn_start.advance(6, 'month'))
     .select(['mean_2m_air_temperature', 'total_precipitation'])
     .map(froz_cal)
     .select('froz_prec')
     .sum();
   var era5_froz_prec_rela = rela_froz_prec_cal(era5_froz_prec).select('rela_froz_prec');
-  
+ 
   // Summer precipitation
   var summer_start = ee.Date.fromYMD(i, 6, 1);
-  var chirps_prec = ee.ImageCollection('UCSB-CHG/CHIRPS/DAILY')
-    .filterDate(autumn_start, autumn_start.advance(3, 'month'))
-    .select('precipitation')
+  var era5_prec = ee.ImageCollection('ECMWF/ERA5/DAILY')
+    .filterDate(autumn_start, autumn_start.advance(4, 'month'))
+    .select('total_precipitation')
     .sum();
-  var chirps_prec_rela = rela_prec_cal(chirps_prec).select('rela_prec');
-  
+
   // Palmer index from summer values
   var summer_start = ee.Date.fromYMD(i, 5, 1);
-  var summer_end = ee.Date.fromYMD(i, 9, 1);
   var pdsi = ee.ImageCollection('IDAHO_EPSCOR/TERRACLIMATE')
-    .filterDate(summer_start,summer_end)
+    .filterDate(summer_start, summer_start.advance(4, 'month'))
     .select('pdsi')
     .median();
 
   // NDSI from winter values
-  var winter_start = ee.Date.fromYMD(i, 10, 31);
-  var modis_ndsi = ee.ImageCollection('MODIS/006/MOD09A1')
-    .filterDate(winter_start, winter_start.advance(4, 'month'))
+  var winter_start = ee.Date.fromYMD(i, 10, 1);
+  var modis_ndsi = ee.ImageCollection('MODIS/061/MOD09GA')
+    .filterDate(winter_start, winter_start.advance(6, 'month'))
+    .filterBounds(study_area)
+    .map(modis_mask)
     .map(indices_cal)
     .select('ndsi')
     .median();
 
-  // NDVI from winter values
-  var autumn_start = ee.Date.fromYMD(i, 8, 1);
-  var modis_ndvi = ee.ImageCollection('MODIS/006/MOD09A1')
-    .filterDate(autumn_start, winter_start.advance(3, 'month'))
+  // NDVI from spring values
+  var spring_start = ee.Date.fromYMD(i, 4, 1);
+  var modis_ndvi = ee.ImageCollection('MODIS/061/MOD09GA')
+    .filterDate(spring_start, spring_start.advance(3, 'month'))
+    .filterBounds(study_area)
+    .map(modis_mask)
     .map(indices_cal)
     .select('ndvi')
     .median();
 
   // NDMI from summer values and add relative winter precipitation and add NDSI index for winter
   var summer_start = ee.Date.fromYMD(i, 5, 1);
-  var summer_end = ee.Date.fromYMD(i, 9, 1);
-  var ndmi = ee.ImageCollection('MODIS/006/MOD09A1')
-    .filterDate(summer_start,summer_end)
+  var ndmi = ee.ImageCollection('MODIS/061/MOD09GA')
+    .filterDate(summer_start, summer_start.advance(4, 'month'))
+    .filterBounds(study_area)
+    .map(modis_mask)
     .map(indices_cal)
     .select('ndmi')
     .median();
-  
+ 
   var all = ndmi
     .addBands(era5_froz_prec_rela.select('rela_froz_prec'))
-    .addBands(chirps_prec_rela.select('rela_prec'))
+    .addBands(era5_prec)
     .addBands(pdsi)
     .addBands(modis_ndsi)
     .addBands(modis_ndvi)
@@ -183,31 +177,34 @@ for (var i = start_year; i <= end_year; i++) {
     .addBands(srtm_aspect);
 
   // Anual dzud raster
-  var dzud = dzud.addBands((dzud_cal(all)).select('dzud').rename(String(i)));
-  
-  // Create map of annual dzud index
-  Map.addLayer(dzud.select(String(i)), dzud_parameters, String(i));
-  
+  var dzud = dzud.addBands((dzud_cal(all)).select('dzud').rename('b' + String(i)));
+ 
   // Mean Dzud Raster
-  var dzud_mean = dzud_mean.add(dzud.select(String(i)).divide(end_year-start_year+1));
+  var dzud_mean = dzud_mean.add(dzud.select('b' + String(i)).divide(end_year-start_year+1));
 }
 
 // Remove data free constant band from dzud layer
 var dzud = remove_band(dzud);
 
 // Add mean dzud index layer into the map
-Map.addLayer(dzud_mean, {'palette': ['white', 'green', 'blue', 'yellow', 'orange', 'pink', 'red'], min: 1, max: 3}, 'Dzuzd index mean');
+Map.addLayer(dzud_mean, {'palette': ['1a9850', '66bd63', 'a6d96a', 'd9ef8b', 'ffffbf', 'fee08b', 'fdae61', 'f46d43', 'd73027'], min: 1.5, max: 5}, 'Dzud index mean 2009–2019');
+
+// Create maps of annual dzud index
+for (var i = start_year; i <= end_year; i++) {
+Map.addLayer(dzud.select('b' + String(i)), {'palette': ['1a9850', '66bd63', 'a6d96a', 'd9ef8b', 'ffffbf', 'fee08b', 'fdae61', 'f46d43', 'd73027'], min: 0, max: 6}, 'Dzud index ' + String(i));
+}
 
 // Export map of annual dzud index
-Export.image.toDrive({image: dzud, description: 'dzud_index', scale: 500, crs: 'EPSG:32650', region: study_area, fileFormat: 'GeoTIFF', maxPixels: 3784216672400});
+Export.image.toDrive({image: dzud, description: 'dzud', scale: 500, crs: 'EPSG:32650', region: study_area, fileFormat: 'GeoTIFF', maxPixels: 3784216672400});
 
 // Export map of mean dzud index
-Export.image.toDrive({image: dzud_mean, description: 'dzud_index_mean', scale: 500, crs: 'EPSG:32650', region: study_area, fileFormat: 'GeoTIFF', maxPixels: 3784216672400});
+Export.image.toDrive({image: dzud_mean, description: 'dzud_mean', scale: 500, crs: 'EPSG:32650', region: study_area, fileFormat: 'GeoTIFF', maxPixels: 3784216672400});
 
+// CHARTS
 // Prepare data for figures
 var dzud = dzud.select(ee.List(dzud.bandNames()).remove('constant').getInfo());
 
-// Create dzud time series index mean in whole study area
+// Create dzud time series index mean in selected area 1
 var TSChart_dzud_mean_1 = ui.Chart.image.regions({
     image: dzud,
     regions: area_1,
@@ -215,13 +212,13 @@ var TSChart_dzud_mean_1 = ui.Chart.image.regions({
     scale: 500,
     seriesProperty: 'label',
 }).setChartType('ScatterChart').setOptions({
-    title: 'Dzud Index (Mean) for study point 1',
+    title: 'Dzud index (mean) for selected area 1',
     hAxis: {title: 'Date', titleTextStyle: {italic: false, bold: true}},
-    vAxis: {title: 'Dzud Index',titleTextStyle: {italic: false, bold: true}},
+    vAxis: {title: 'Dzud index',titleTextStyle: {italic: false, bold: true}},
     colors: ['red'],
 });
 
-// Create dzud time series index mean in whole study area
+// Create dzud time series index mean in selected area 2
 var TSChart_dzud_mean_2 = ui.Chart.image.regions({
     image: dzud,
     regions: area_2,
@@ -229,50 +226,76 @@ var TSChart_dzud_mean_2 = ui.Chart.image.regions({
     scale: 500,
     seriesProperty: 'label',
 }).setChartType('ScatterChart').setOptions({
-    title: 'Dzud Index (Mean) for study point 2',
+    title: 'Dzud index (mean) for selected area 2',
     hAxis: {title: 'Date', titleTextStyle: {italic: false, bold: true}},
-    vAxis: {title: 'Dzud Index',titleTextStyle: {italic: false, bold: true}},
+    vAxis: {title: 'Dzud index',titleTextStyle: {italic: false, bold: true}},
     colors: ['red'],
 });
 
-// Display the chart of dzud time series index mean in study points
+// Display the chart of dzud time series index mean in whole study area
 print(TSChart_dzud_mean_1);
 print(TSChart_dzud_mean_2);
 
+// ACCURACY ASSESSMENT
 // Layers with dzud and non-dzud areas
-var dzud_non_dzud_areas_09_10 = ee.FeatureCollection('projects/precuchovasofie/assets/mongolia/dzud_09_10');
-var dzud_non_dzud_areas_16_17 = ee.FeatureCollection('projects/precuchovasofie/assets/mongolia/dzud_16_17');
+var dzud_validation_09_10 = ee.FeatureCollection('projects/precuchovasofie/assets/mongolia/dzud_09_10');
+var dzud_validation_16_17 = ee.FeatureCollection('projects/precuchovasofie/assets/mongolia/dzud_16_17');
 
 // Add layers with dzud and non-dzud areas
-Map.addLayer(dzud_non_dzud_areas_09_10, {}, 'Layer with dzud and non-dzud areas 2009–10');
-Map.addLayer(dzud_non_dzud_areas_16_17, {}, 'Layer with dzud and non-dzud areas 2016–17');
+var colorTable = ee.Dictionary({
+  '0': 'blue',
+  '1': 'red',
+});
+var dzud_validation_09_10_styled = dzud_validation_09_10
+  .map(function (feature) {
+    return feature.set('style', {
+      fillColor: colorTable.get(feature.get('dzud')),
+      width: 0
+    });
+  })
+  .style({
+    styleProperty: 'style',
+  });
+var dzud_validation_16_17_styled = dzud_validation_16_17
+  .map(function (feature) {
+    return feature.set('style', {
+      fillColor: colorTable.get(feature.get('dzud')),
+      width: 0
+    });
+  })
+  .style({
+    styleProperty: 'style',
+  });
 
-// Generate random points for acuraccy assessment
-var random_points_09_10 = ee.FeatureCollection.randomPoints(dzud_non_dzud_areas_09_10, 5000, 0);
-var random_points_16_17 = ee.FeatureCollection.randomPoints(dzud_non_dzud_areas_16_17, 5000, 0);
+Map.addLayer(dzud_validation_09_10_styled, {}, 'Dzud validation data 2009–2010');
+Map.addLayer(dzud_validation_16_17_styled, {}, 'Dzud validation data 2016–2017');
 
 // The n is treshold for dzud index
 var n = 4.5;
 
 // Generate binary maps of dzud, where dzud index is higher than n
-var dzud_accuracy_09_10 = dzud.select('2009').gte(n);
-var dzud_accuracy_16_17 = dzud.select('2016').gte(n);
+var dzud_prediction_09_10 = dzud.select('b2009').gte(n);
+var dzud_prediction_16_17 = dzud.select('b2016').gte(n);
 
 // Add binary maps of dzud into map
-Map.addLayer(dzud_accuracy_09_10, {'palette': ['blue', 'red'], min: 0, max: 1},'Dzud index binary 2009–10');
-Map.addLayer(dzud_accuracy_16_17, {'palette': ['blue', 'red'], min: 0, max: 1},'Dzud index binary 2016–17');
+Map.addLayer(dzud_prediction_09_10, {'palette': ['blue', 'red'], min: 0, max: 1},'Dzud prediction data 2009–2010');
+Map.addLayer(dzud_prediction_16_17, {'palette': ['blue', 'red'], min: 0, max: 1},'Dzud prediction data 2016–2017');
 
 // Export map of binary maps
-Export.image.toDrive({image: dzud_accuracy_09_10, description: 'dzud_binary_09_16', scale: 500, crs: 'EPSG:32650', region: study_area, fileFormat: 'GeoTIFF', maxPixels: 3784216672400});
-Export.image.toDrive({image: dzud_accuracy_16_17, description: 'dzud_binary_16_17', scale: 500, crs: 'EPSG:32650', region: study_area, fileFormat: 'GeoTIFF', maxPixels: 3784216672400});
+Export.image.toDrive({image: dzud_prediction_09_10, description: 'dzud_prediction_09_10', scale: 500, crs: 'EPSG:32650', region: study_area, fileFormat: 'GeoTIFF', maxPixels: 3784216672400});
+Export.image.toDrive({image: dzud_prediction_16_17, description: 'dzud_prediction_16_17', scale: 500, crs: 'EPSG:32650', region: study_area, fileFormat: 'GeoTIFF', maxPixels: 3784216672400});
+
+// Generate random points for acuraccy assessment
+var random_points_09_10 = ee.FeatureCollection.randomPoints(study_area, 6000, 0);
+var random_points_16_17 = ee.FeatureCollection.randomPoints(study_area, 6000, 0);
 
 // Extracting values
-var sampled_points_09_10 = dzud_accuracy_09_10.sampleRegions({
+var sampled_points_prediction_09_10 = dzud_prediction_09_10.sampleRegions({
   collection: random_points_09_10,
   scale: 500,
   geometries: true
 });
-var sampled_points_16_17 = dzud_accuracy_16_17.sampleRegions({
+var sampled_points_prediction_16_17 = dzud_prediction_16_17.sampleRegions({
   collection: random_points_16_17,
   scale: 500,
   geometries: true
@@ -287,10 +310,10 @@ var spatial_filter_09_10 = ee.Filter.intersects({
 var save_all_join_09_10 = ee.Join.saveAll({
   matchesKey: 'sampled_points_09_10'
 });
-var intersect_joined_09_10 = save_all_join_09_10
+var spatial_joined_09_10 = save_all_join_09_10
   .apply({
-    primary: dzud_non_dzud_areas_09_10, 
-    secondary: sampled_points_09_10, 
+    primary: dzud_validation_09_10,
+    secondary: sampled_points_prediction_09_10,
     condition: spatial_filter_09_10
   })
   .map(function(polygon_09_10) {
@@ -310,10 +333,10 @@ var spatial_filter_16_17 = ee.Filter.intersects({
 var save_all_join_16_17 = ee.Join.saveAll({
   matchesKey: 'sampled_points_16_17'
 });
-var intersect_joined_16_17 = save_all_join_16_17
+var spatial_joined_16_17 = save_all_join_16_17
   .apply({
-    primary: dzud_non_dzud_areas_16_17, 
-    secondary: sampled_points_16_17, 
+    primary: dzud_validation_16_17,
+    secondary: sampled_points_prediction_16_17,
     condition: spatial_filter_16_17
   })
   .map(function(polygon_16_17) {
@@ -326,24 +349,24 @@ var intersect_joined_16_17 = save_all_join_16_17
   }).flatten();
 
 // Export accuracy assessment
-Export.table.toDrive(intersect_joined_09_10, 'accuracy_assesment_09_10');
-Export.table.toDrive(intersect_joined_16_17, 'accuracy_assesment_16_17');
+Export.table.toDrive(spatial_joined_09_10, 'accuracy_assesment_09_10');
+Export.table.toDrive(spatial_joined_16_17, 'accuracy_assesment_16_17');
 
 // Define the attributes for compare in accuracy assessment
-var attribute_09_10 = '2009';
-var attribute_16_17 = '2016';
+var attribute_09_10 = 'b2009';
+var attribute_16_17 = 'b2016';
 var attribute_dzud = 'dzud';
 
 // Filter the points where attribute A equals attribute B
-var intersect_joined_09_10_filter_equal = intersect_joined_09_10.filter(ee.Filter.equals({
+var spatial_joined_09_10_filter_equal = spatial_joined_09_10.filter(ee.Filter.equals({
   leftField: attribute_09_10,
   rightField: attribute_dzud
 }));
-var intersect_joined_16_17_filter_equal = intersect_joined_16_17.filter(ee.Filter.equals({
+var spatial_joined_16_17_filter_equal = spatial_joined_16_17.filter(ee.Filter.equals({
   leftField: attribute_16_17,
   rightField: attribute_dzud
 }));
 
 // Sum of all eaqual points divided with all points and recalculated into %
-print('Accuracy assessment in 2009–2010 (%):', intersect_joined_09_10_filter_equal.size().divide(intersect_joined_09_10.size()).multiply(100));
-print('Accuracy assessment in 2016–2017 (%):', intersect_joined_16_17_filter_equal.size().divide(intersect_joined_16_17.size()).multiply(100));
+print('Accuracy assessment in 2009–2010 (%):', spatial_joined_09_10_filter_equal.size().divide(spatial_joined_09_10.size()).multiply(100));
+print('Accuracy assessment in 2016–2017 (%):', spatial_joined_16_17_filter_equal.size().divide(spatial_joined_16_17.size()).multiply(100));
