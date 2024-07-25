@@ -195,10 +195,10 @@ Map.addLayer(dzud.select('b' + String(i)), {'palette': ['1a9850', '66bd63', 'a6d
 }
 
 // Export map of annual dzud index
-Export.image.toDrive({image: dzud, description: 'dzud', scale: 500, crs: 'EPSG:32650', region: study_area, fileFormat: 'GeoTIFF', maxPixels: 3784216672400});
+Export.image.toDrive({image: dzud.unmask(100), description: 'dzud', scale: 500, crs: 'EPSG:32650', region: study_area, fileFormat: 'GeoTIFF', maxPixels: 3784216672400});
 
 // Export map of mean dzud index
-Export.image.toDrive({image: dzud_mean, description: 'dzud_mean', scale: 500, crs: 'EPSG:32650', region: study_area, fileFormat: 'GeoTIFF', maxPixels: 3784216672400});
+Export.image.toDrive({image: dzud_mean.unmask(100), description: 'dzud_mean', scale: 500, crs: 'EPSG:32650', region: study_area, fileFormat: 'GeoTIFF', maxPixels: 3784216672400});
 
 // CHARTS
 // Prepare data for figures
@@ -282,8 +282,8 @@ Map.addLayer(dzud_prediction_09_10, {'palette': ['blue', 'red'], min: 0, max: 1}
 Map.addLayer(dzud_prediction_16_17, {'palette': ['blue', 'red'], min: 0, max: 1},'Dzud prediction data 2016–2017');
 
 // Export map of binary maps
-Export.image.toDrive({image: dzud_prediction_09_10, description: 'dzud_prediction_09_10', scale: 500, crs: 'EPSG:32650', region: study_area, fileFormat: 'GeoTIFF', maxPixels: 3784216672400});
-Export.image.toDrive({image: dzud_prediction_16_17, description: 'dzud_prediction_16_17', scale: 500, crs: 'EPSG:32650', region: study_area, fileFormat: 'GeoTIFF', maxPixels: 3784216672400});
+Export.image.toDrive({image: dzud_prediction_09_10.unmask(100), description: 'dzud_prediction_09_10', scale: 500, crs: 'EPSG:32650', region: study_area, fileFormat: 'GeoTIFF', maxPixels: 3784216672400});
+Export.image.toDrive({image: dzud_prediction_16_17.unmask(100), description: 'dzud_prediction_16_17', scale: 500, crs: 'EPSG:32650', region: study_area, fileFormat: 'GeoTIFF', maxPixels: 3784216672400});
 
 // Generate random points for acuraccy assessment
 var random_points_09_10 = ee.FeatureCollection.randomPoints(study_area, 6000, 0);
@@ -302,11 +302,12 @@ var sampled_points_prediction_16_17 = dzud_prediction_16_17.sampleRegions({
 });
 
 // Merge information from polygons to points
-var spatial_filter_09_10 = ee.Filter.intersects({
+var spatial_filter = ee.Filter.intersects({
   leftField: '.geo',
   rightField: '.geo',
   maxError: 10
 });
+
 var save_all_join_09_10 = ee.Join.saveAll({
   matchesKey: 'sampled_points_09_10'
 });
@@ -314,7 +315,7 @@ var spatial_joined_09_10 = save_all_join_09_10
   .apply({
     primary: dzud_validation_09_10,
     secondary: sampled_points_prediction_09_10,
-    condition: spatial_filter_09_10
+    condition: spatial_filter
   })
   .map(function(polygon_09_10) {
     var label_09_10 = polygon_09_10.get('dzud');
@@ -325,11 +326,6 @@ var spatial_joined_09_10 = save_all_join_09_10
     return points_09_10;
   }).flatten();
 
-var spatial_filter_16_17 = ee.Filter.intersects({
-  leftField: '.geo',
-  rightField: '.geo',
-  maxError: 10
-});
 var save_all_join_16_17 = ee.Join.saveAll({
   matchesKey: 'sampled_points_16_17'
 });
@@ -337,7 +333,7 @@ var spatial_joined_16_17 = save_all_join_16_17
   .apply({
     primary: dzud_validation_16_17,
     secondary: sampled_points_prediction_16_17,
-    condition: spatial_filter_16_17
+    condition: spatial_filter
   })
   .map(function(polygon_16_17) {
     var label_16_17 = polygon_16_17.get('dzud');
@@ -370,3 +366,4 @@ var spatial_joined_16_17_filter_equal = spatial_joined_16_17.filter(ee.Filter.eq
 // Sum of all eaqual points divided with all points and recalculated into %
 print('Accuracy assessment in 2009–2010 (%):', spatial_joined_09_10_filter_equal.size().divide(spatial_joined_09_10.size()).multiply(100));
 print('Accuracy assessment in 2016–2017 (%):', spatial_joined_16_17_filter_equal.size().divide(spatial_joined_16_17.size()).multiply(100));
+
